@@ -9,6 +9,7 @@ module NewrelicNsqPlugin
     agent_config_options :nsqd, :name
 
     def setup_metrics
+      @epochs = Hash.new { |h, k| h[k] = NewRelic::Processor::EpochCounter.new }
     end
 
     def poll_cycle
@@ -42,12 +43,17 @@ module NewrelicNsqPlugin
       channels = data.fetch('channels', [])
 
 
-      report_metric "Topic/Depth/#{topic_name}", 'messages', depth
-      report_metric "Topic/Count/#{topic_name}", 'messages', message_count
+      report_metric "Topic/Depth/#{topic_name}", 'Messages', depth
+      report_epoch "Topic/Count/#{topic_name}", 'Messages/seconds', message_count
 
       channels.each do |channel|
         report_channel(topic_name, channel)
       end
+    end
+
+    def report_epoch(name, unit, value)
+      processed_value = @epochs[name].process(value)
+      report_metric(name, unit, processed_value)
     end
 
     def report_channel(topic_name, data)
@@ -59,12 +65,14 @@ module NewrelicNsqPlugin
       requeue_count = data.fetch('requeue_count')
       timeout_count = data.fetch('timeout_count')
 
-      report_metric "Channel/Depth/#{topic_name} - #{channel_name}", 'messages', depth
-      report_metric "Channel/Count/#{topic_name} - #{channel_name}", 'messages', message_count
-      report_metric "Channel/In Flight/#{topic_name} - #{channel_name}", 'messages', in_flight
-      report_metric "Channel/Deferred/#{topic_name} - #{channel_name}", 'messages', deferred_count
-      report_metric "Channel/Requeued/#{topic_name} - #{channel_name}", 'messages', requeue_count
-      report_metric "Channel/Timed Out/#{topic_name} - #{channel_name}", 'messages', timeout_count
+      metric_name = "#{topic_name} - #{channel_name}"
+
+      report_metric "Channel/Depth/#{metric_name}", 'Messages', depth
+      report_epoch "Channel/Count/#{metric_name}", 'Messages/seconds', message_count
+      report_metric "Channel/In Flight/#{metric_name}", 'Messages', in_flight
+      report_metric "Channel/Deferred/#{metric_name}", 'Messages', deferred_count
+      report_epoch "Channel/Requeued/#{metric_name}", 'Messages/seconds', requeue_count
+      report_epoch "Channel/Timed Out/#{metric_name}", 'Messages/seconds', timeout_count
     end
 
     def http_client
