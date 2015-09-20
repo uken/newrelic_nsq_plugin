@@ -1,0 +1,4 @@
+#!/usr/bin/env ruby
+require 'newrelic_nsq_plugin'
+
+NewrelicNsqPlugin::CLI.start
